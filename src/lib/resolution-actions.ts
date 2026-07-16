@@ -4,9 +4,13 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { MAX_FILE_SIZE } from "@/lib/constants";
 import {
+  createObjectStorage,
+  resolveSignedUrl,
   buildResolutionPdfPath,
-  mapResolutionRowToDocument,
   RESOLUTION_PDF_BUCKET,
+} from "@/lib/infrastructure/storage";
+import {
+  mapResolutionRowToDocument,
   RESOLUTION_SELECT,
   type ResolutionRow,
 } from "@/lib/supabase/resolution-mapper";
@@ -21,21 +25,15 @@ export type ActionResult<T> =
   | { success: true; data: T }
   | { success: false; error: string };
 
-const SIGNED_URL_TTL_SECONDS = 3600;
-
 async function createSignedPdfUrl(
   supabase: SupabaseServerClient,
   storagePath: string
 ): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from(RESOLUTION_PDF_BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
-
-  if (error || !data?.signedUrl) {
-    return "";
-  }
-
-  return data.signedUrl;
+  return resolveSignedUrl(
+    createObjectStorage(supabase),
+    RESOLUTION_PDF_BUCKET,
+    storagePath
+  );
 }
 
 async function bumpDocumentCount(
@@ -136,16 +134,18 @@ export async function createResolutionAction(
 
   const resolutionId = randomUUID();
   const storagePath = buildResolutionPdfPath(session.lguId, resolutionId);
+  const storage = createObjectStorage(session.supabase);
 
-  const { error: uploadError } = await session.supabase.storage
-    .from(RESOLUTION_PDF_BUCKET)
-    .upload(storagePath, pdfFile, {
-      contentType: "application/pdf",
-      upsert: false,
-    });
+  const { error: uploadError } = await storage.upload({
+    bucket: RESOLUTION_PDF_BUCKET,
+    key: storagePath,
+    body: pdfFile,
+    contentType: "application/pdf",
+    upsert: false,
+  });
 
   if (uploadError) {
-    return { success: false, error: uploadError.message };
+    return { success: false, error: uploadError };
   }
 
   const { error: insertError } = await session.supabase.from("resolutions").insert({
@@ -163,9 +163,7 @@ export async function createResolutionAction(
   });
 
   if (insertError) {
-    await session.supabase.storage
-      .from(RESOLUTION_PDF_BUCKET)
-      .remove([storagePath]);
+    await storage.remove(RESOLUTION_PDF_BUCKET, [storagePath]);
     return { success: false, error: insertError.message };
   }
 
@@ -224,15 +222,18 @@ export async function updateResolutionAction(
       return { success: false, error: "File size must be less than 25MB." };
     }
 
-    const { error: uploadError } = await session.supabase.storage
-      .from(RESOLUTION_PDF_BUCKET)
-      .upload(storagePath, pdfFile, {
-        contentType: "application/pdf",
-        upsert: true,
-      });
+    const { error: uploadError } = await createObjectStorage(
+      session.supabase
+    ).upload({
+      bucket: RESOLUTION_PDF_BUCKET,
+      key: storagePath,
+      body: pdfFile,
+      contentType: "application/pdf",
+      upsert: true,
+    });
 
     if (uploadError) {
-      return { success: false, error: uploadError.message };
+      return { success: false, error: uploadError };
     }
   }
 
@@ -296,9 +297,9 @@ export async function deleteResolutionAction(
     return { success: false, error: deleteError.message };
   }
 
-  await session.supabase.storage
-    .from(RESOLUTION_PDF_BUCKET)
-    .remove([existing.pdf_storage_path as string]);
+  await createObjectStorage(session.supabase).remove(RESOLUTION_PDF_BUCKET, [
+    existing.pdf_storage_path as string,
+  ]);
 
   await bumpDocumentCount(session.supabase, session.lguId, -1);
 

@@ -24,11 +24,10 @@ export type OrdinanceRow = {
   updated_at: string;
 };
 
-export const ORDINANCE_PDF_BUCKET = "ordinance-pdfs";
-
-export function buildOrdinancePdfPath(lguId: string, ordinanceId: string): string {
-  return `${lguId}/${ordinanceId}.pdf`;
-}
+export {
+  ORDINANCE_PDF_BUCKET,
+  buildOrdinancePdfPath,
+} from "@/lib/infrastructure/storage";
 
 export function mapOrdinanceRowToDocument(
   row: OrdinanceRow,

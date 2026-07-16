@@ -31,10 +31,10 @@ import {
 } from "@/components/ui/select";
 import { useActiveCategories } from "@/hooks/use-active-categories";
 import { createResolutionAction } from "@/lib/resolution-actions";
-import { MAX_FILE_SIZE } from "@/lib/constants";
+import { getSeriesYearOptions, MAX_FILE_SIZE } from "@/lib/constants";
 
 const currentYear = new Date().getFullYear();
-const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
+const yearOptions = getSeriesYearOptions(currentYear);
 
 const formSchema = z.object({
   no: z.string().optional(),

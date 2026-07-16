@@ -18,6 +18,24 @@ export const SESSION_TYPES = [
   { value: "special", label: "Special" },
 ] as const;
 
+/** Earliest series year offered in ordinance/resolution Year dropdowns. */
+export const SERIES_YEAR_MIN = 1980;
+
+/**
+ * Series years from the present calendar year down to {@link SERIES_YEAR_MIN}.
+ * Extends automatically each new year (e.g. includes 2027 when the clock reaches 2027).
+ */
+export function getSeriesYearOptions(
+  referenceYear: number = new Date().getFullYear()
+): number[] {
+  const end = Math.max(referenceYear, SERIES_YEAR_MIN);
+  const years: number[] = [];
+  for (let year = end; year >= SERIES_YEAR_MIN; year -= 1) {
+    years.push(year);
+  }
+  return years;
+}
+
 export const COMMITTEE_YEAR_TERMS = [
   "2025-2028",
   "2023-2025",

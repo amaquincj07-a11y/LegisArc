@@ -5,9 +5,13 @@ import { revalidatePath } from "next/cache";
 import { APPROPRIATION_ORDINANCE_CATEGORY, MAX_FILE_SIZE } from "@/lib/constants";
 import type { OrdinanceKind } from "@/lib/types";
 import {
+  createObjectStorage,
+  resolveSignedUrl,
   buildOrdinancePdfPath,
-  mapOrdinanceRowToDocument,
   ORDINANCE_PDF_BUCKET,
+} from "@/lib/infrastructure/storage";
+import {
+  mapOrdinanceRowToDocument,
   ORDINANCE_SELECT,
   type OrdinanceRow,
 } from "@/lib/supabase/ordinance-mapper";
@@ -21,8 +25,6 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 export type ActionResult<T> =
   | { success: true; data: T }
   | { success: false; error: string };
-
-const SIGNED_URL_TTL_SECONDS = 3600;
 
 function parseOrdinanceKind(
   category: string,
@@ -38,15 +40,11 @@ async function createSignedPdfUrl(
   supabase: SupabaseServerClient,
   storagePath: string
 ): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from(ORDINANCE_PDF_BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
-
-  if (error || !data?.signedUrl) {
-    return "";
-  }
-
-  return data.signedUrl;
+  return resolveSignedUrl(
+    createObjectStorage(supabase),
+    ORDINANCE_PDF_BUCKET,
+    storagePath
+  );
 }
 
 async function bumpDocumentCount(
@@ -151,16 +149,18 @@ export async function createOrdinanceAction(
 
   const ordinanceId = randomUUID();
   const storagePath = buildOrdinancePdfPath(session.lguId, ordinanceId);
+  const storage = createObjectStorage(session.supabase);
 
-  const { error: uploadError } = await session.supabase.storage
-    .from(ORDINANCE_PDF_BUCKET)
-    .upload(storagePath, pdfFile, {
-      contentType: "application/pdf",
-      upsert: false,
-    });
+  const { error: uploadError } = await storage.upload({
+    bucket: ORDINANCE_PDF_BUCKET,
+    key: storagePath,
+    body: pdfFile,
+    contentType: "application/pdf",
+    upsert: false,
+  });
 
   if (uploadError) {
-    return { success: false, error: uploadError.message };
+    return { success: false, error: uploadError };
   }
 
   const { error: insertError } = await session.supabase.from("ordinances").insert({
@@ -179,9 +179,7 @@ export async function createOrdinanceAction(
   });
 
   if (insertError) {
-    await session.supabase.storage
-      .from(ORDINANCE_PDF_BUCKET)
-      .remove([storagePath]);
+    await storage.remove(ORDINANCE_PDF_BUCKET, [storagePath]);
     return { success: false, error: insertError.message };
   }
 
@@ -244,15 +242,18 @@ export async function updateOrdinanceAction(
       return { success: false, error: "File size must be less than 25MB." };
     }
 
-    const { error: uploadError } = await session.supabase.storage
-      .from(ORDINANCE_PDF_BUCKET)
-      .upload(storagePath, pdfFile, {
-        contentType: "application/pdf",
-        upsert: true,
-      });
+    const { error: uploadError } = await createObjectStorage(
+      session.supabase
+    ).upload({
+      bucket: ORDINANCE_PDF_BUCKET,
+      key: storagePath,
+      body: pdfFile,
+      contentType: "application/pdf",
+      upsert: true,
+    });
 
     if (uploadError) {
-      return { success: false, error: uploadError.message };
+      return { success: false, error: uploadError };
     }
   }
 
@@ -317,9 +318,9 @@ export async function deleteOrdinanceAction(
     return { success: false, error: deleteError.message };
   }
 
-  await session.supabase.storage
-    .from(ORDINANCE_PDF_BUCKET)
-    .remove([existing.pdf_storage_path as string]);
+  await createObjectStorage(session.supabase).remove(ORDINANCE_PDF_BUCKET, [
+    existing.pdf_storage_path as string,
+  ]);
 
   await bumpDocumentCount(session.supabase, session.lguId, -1);
 

@@ -9,9 +9,11 @@ import {
   type DocumentDownloadRow,
 } from "@/lib/supabase/document-download-mapper";
 import { toPlaceStorageKey } from "@/lib/supabase/lgu-mapper";
-import { ORDINANCE_PDF_BUCKET } from "@/lib/supabase/ordinance-mapper";
-import { RESOLUTION_PDF_BUCKET } from "@/lib/supabase/resolution-mapper";
-import { MINUTES_PDF_BUCKET } from "@/lib/supabase/session-minutes-mapper";
+import {
+  createAdminObjectStorage,
+  getDocumentPdfBucket,
+  SIGNED_URL_TTL_SECONDS,
+} from "@/lib/infrastructure/storage";
 import { requireLGUSession } from "@/lib/supabase/require-lgu-user";
 import type { DocumentDownloadRecord, DocumentType, PublicDocumentDownloadContext } from "@/lib/types";
 
@@ -19,18 +21,10 @@ export type ActionResult<T> =
   | { success: true; data: T }
   | { success: false; error: string };
 
-const SIGNED_URL_TTL_SECONDS = 3600;
-
 function getDocumentTable(documentType: DocumentType) {
   if (documentType === "ordinance") return "ordinances";
   if (documentType === "resolution") return "resolutions";
   return "session_minutes";
-}
-
-function getDocumentBucket(documentType: DocumentType) {
-  if (documentType === "ordinance") return ORDINANCE_PDF_BUCKET;
-  if (documentType === "resolution") return RESOLUTION_PDF_BUCKET;
-  return MINUTES_PDF_BUCKET;
 }
 
 function sanitizeDownloadFileName(name: string): string {
@@ -154,7 +148,7 @@ export async function getPublicDocumentDownloadUrlAction(
 
     const supabase = createAdminClient();
     const table = getDocumentTable(context.documentType);
-    const bucket = getDocumentBucket(context.documentType);
+    const bucket = getDocumentPdfBucket(context.documentType);
 
     const { data: documentRow, error: documentError } = await supabase
       .from(table)
@@ -173,17 +167,18 @@ export async function getPublicDocumentDownloadUrlAction(
       downloadFileName || context.documentTitle || "document"
     )}.pdf`;
 
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .createSignedUrl(documentRow.pdf_storage_path as string, SIGNED_URL_TTL_SECONDS, {
-        download: fileName,
-      });
+    const { url, error } = await createAdminObjectStorage().createSignedUrl({
+      bucket,
+      key: documentRow.pdf_storage_path as string,
+      expiresInSeconds: SIGNED_URL_TTL_SECONDS,
+      downloadFileName: fileName,
+    });
 
-    if (error || !data?.signedUrl) {
+    if (error || !url) {
       return { success: false, error: "Failed to prepare document download." };
     }
 
-    return { success: true, data: { url: data.signedUrl, fileName } };
+    return { success: true, data: { url, fileName } };
   } catch {
     return { success: false, error: "Failed to prepare document download." };
   }

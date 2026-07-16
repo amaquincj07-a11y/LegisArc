@@ -34,14 +34,17 @@ import {
   fetchOrdinanceByIdAction,
   updateOrdinanceAction,
 } from "@/lib/ordinance-actions";
-import { APPROPRIATION_ORDINANCE_CATEGORY } from "@/lib/constants";
+import {
+  APPROPRIATION_ORDINANCE_CATEGORY,
+  getSeriesYearOptions,
+} from "@/lib/constants";
 import { OrdinanceKindField } from "@/components/admin/ordinance-kind-field";
 import { EditPdfDocumentField } from "@/components/admin/edit-pdf-document-field";
 import { formatOrdinanceNumber } from "@/lib/utils";
 import type { LegislativeDocument } from "@/lib/types";
 
 const currentYear = new Date().getFullYear();
-const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
+const yearOptions = getSeriesYearOptions(currentYear);
 
 const formSchema = z.object({
   ordinanceNumber: z.string().min(1, "Ordinance number is required"),

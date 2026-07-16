@@ -34,12 +34,13 @@ import {
   fetchResolutionByIdAction,
   updateResolutionAction,
 } from "@/lib/resolution-actions";
+import { getSeriesYearOptions } from "@/lib/constants";
 import { formatResolutionNumber } from "@/lib/utils";
 import { EditPdfDocumentField } from "@/components/admin/edit-pdf-document-field";
 import type { LegislativeDocument } from "@/lib/types";
 
 const currentYear = new Date().getFullYear();
-const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
+const yearOptions = getSeriesYearOptions(currentYear);
 
 const formSchema = z.object({
   no: z.string().optional(),

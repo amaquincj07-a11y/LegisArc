@@ -16,11 +16,10 @@ export type SessionMinutesRow = {
   updated_at: string;
 };
 
-export const MINUTES_PDF_BUCKET = "minutes-pdfs";
-
-export function buildMinutesPdfPath(lguId: string, minutesId: string): string {
-  return `${lguId}/${minutesId}.pdf`;
-}
+export {
+  MINUTES_PDF_BUCKET,
+  buildMinutesPdfPath,
+} from "@/lib/infrastructure/storage";
 
 export function mapSessionMinutesRowToDocument(
   row: SessionMinutesRow,

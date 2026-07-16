@@ -4,11 +4,16 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { SB_MEMBER_POSITION_SLOTS } from "@/lib/constants";
 import {
+  createObjectStorage,
+  resolveSignedUrl,
+  SIGNED_URL_TTL_SECONDS,
+  SB_MEMBER_PHOTO_BUCKET,
   buildSBMemberPhotoPath,
+} from "@/lib/infrastructure/storage";
+import {
   getImageExtension,
   getPositionLabelForSlot,
   mapSBMemberRowToMember,
-  SB_MEMBER_PHOTO_BUCKET,
   SB_MEMBER_PLACEHOLDER_IMAGE,
   SB_MEMBER_SELECT,
   validateMemberImage,
@@ -25,8 +30,6 @@ export type ActionResult<T> =
   | { success: true; data: T }
   | { success: false; error: string };
 
-const SIGNED_URL_TTL_SECONDS = 3600;
-
 const VALID_SLOTS = new Set(
   SB_MEMBER_POSITION_SLOTS.map((entry) => entry.slot)
 );
@@ -35,19 +38,12 @@ async function createSignedImageUrl(
   supabase: SupabaseServerClient,
   storagePath: string
 ): Promise<string> {
-  if (!storagePath) {
-    return SB_MEMBER_PLACEHOLDER_IMAGE;
-  }
-
-  const { data, error } = await supabase.storage
-    .from(SB_MEMBER_PHOTO_BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
-
-  if (error || !data?.signedUrl) {
-    return SB_MEMBER_PLACEHOLDER_IMAGE;
-  }
-
-  return data.signedUrl;
+  return resolveSignedUrl(
+    createObjectStorage(supabase),
+    SB_MEMBER_PHOTO_BUCKET,
+    storagePath,
+    SB_MEMBER_PLACEHOLDER_IMAGE
+  );
 }
 
 async function mapRowsWithSignedUrls(
@@ -65,14 +61,13 @@ async function mapRowsWithSignedUrls(
   const signedUrlByPath = new Map<string, string>();
 
   if (pathsToSign.length > 0) {
-    const { data } = await supabase.storage
-      .from(SB_MEMBER_PHOTO_BUCKET)
-      .createSignedUrls(pathsToSign, SIGNED_URL_TTL_SECONDS);
-
-    for (const item of data ?? []) {
-      if (item.path && item.signedUrl) {
-        signedUrlByPath.set(item.path, item.signedUrl);
-      }
+    const { urls } = await createObjectStorage(supabase).createSignedUrls({
+      bucket: SB_MEMBER_PHOTO_BUCKET,
+      keys: pathsToSign,
+      expiresInSeconds: SIGNED_URL_TTL_SECONDS,
+    });
+    for (const [path, url] of urls) {
+      signedUrlByPath.set(path, url);
     }
   }
 
@@ -133,6 +128,7 @@ export async function createSBMemberAction(
 
   const memberId = randomUUID();
   let storagePath = "";
+  const storage = createObjectStorage(session.supabase);
 
   if (imageFile instanceof File && imageFile.size > 0) {
     const imageError = validateMemberImage(imageFile);
@@ -146,15 +142,16 @@ export async function createSBMemberAction(
       getImageExtension(imageFile)
     );
 
-    const { error: uploadError } = await session.supabase.storage
-      .from(SB_MEMBER_PHOTO_BUCKET)
-      .upload(storagePath, imageFile, {
-        contentType: imageFile.type,
-        upsert: false,
-      });
+    const { error: uploadError } = await storage.upload({
+      bucket: SB_MEMBER_PHOTO_BUCKET,
+      key: storagePath,
+      body: imageFile,
+      contentType: imageFile.type,
+      upsert: false,
+    });
 
     if (uploadError) {
-      return { success: false, error: uploadError.message };
+      return { success: false, error: uploadError };
     }
   }
 
@@ -175,9 +172,7 @@ export async function createSBMemberAction(
 
   if (insertError || !data) {
     if (storagePath) {
-      await session.supabase.storage
-        .from(SB_MEMBER_PHOTO_BUCKET)
-        .remove([storagePath]);
+      await storage.remove(SB_MEMBER_PHOTO_BUCKET, [storagePath]);
     }
     return { success: false, error: insertError?.message ?? "Failed to add member." };
   }
@@ -242,15 +237,18 @@ export async function updateSBMemberAction(
       getImageExtension(imageFile)
     );
 
-    const { error: uploadError } = await session.supabase.storage
-      .from(SB_MEMBER_PHOTO_BUCKET)
-      .upload(storagePath, imageFile, {
-        contentType: imageFile.type,
-        upsert: true,
-      });
+    const { error: uploadError } = await createObjectStorage(
+      session.supabase
+    ).upload({
+      bucket: SB_MEMBER_PHOTO_BUCKET,
+      key: storagePath,
+      body: imageFile,
+      contentType: imageFile.type,
+      upsert: true,
+    });
 
     if (uploadError) {
-      return { success: false, error: uploadError.message };
+      return { success: false, error: uploadError };
     }
   }
 
@@ -315,9 +313,9 @@ export async function deleteSBMemberAction(
   }
 
   if (existing.image_storage_path) {
-    await session.supabase.storage
-      .from(SB_MEMBER_PHOTO_BUCKET)
-      .remove([existing.image_storage_path as string]);
+    await createObjectStorage(session.supabase).remove(SB_MEMBER_PHOTO_BUCKET, [
+      existing.image_storage_path as string,
+    ]);
   }
 
   await recordLGUActivity({

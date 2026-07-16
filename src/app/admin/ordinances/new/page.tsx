@@ -31,11 +31,15 @@ import {
 } from "@/components/ui/select";
 import { useActiveCategories } from "@/hooks/use-active-categories";
 import { createOrdinanceAction } from "@/lib/ordinance-actions";
-import { APPROPRIATION_ORDINANCE_CATEGORY, MAX_FILE_SIZE } from "@/lib/constants";
+import {
+  APPROPRIATION_ORDINANCE_CATEGORY,
+  getSeriesYearOptions,
+  MAX_FILE_SIZE,
+} from "@/lib/constants";
 import { OrdinanceKindField } from "@/components/admin/ordinance-kind-field";
 
 const currentYear = new Date().getFullYear();
-const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
+const yearOptions = getSeriesYearOptions(currentYear);
 
 const formSchema = z.object({
   ordinanceNumber: z.string().min(1, "Ordinance number is required"),

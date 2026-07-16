@@ -9,11 +9,15 @@ import {
 } from "@/lib/supabase/committee-mapper";
 import {
   mapSBMemberRowToMember,
-  SB_MEMBER_PHOTO_BUCKET,
   SB_MEMBER_PLACEHOLDER_IMAGE,
   SB_MEMBER_SELECT,
   type SBMemberRow,
 } from "@/lib/supabase/sb-member-mapper";
+import {
+  createAdminObjectStorage,
+  SIGNED_URL_TTL_SECONDS,
+  SB_MEMBER_PHOTO_BUCKET,
+} from "@/lib/infrastructure/storage";
 import { COMMITTEE_YEAR_TERMS } from "@/lib/constants";
 import type { Committee, SBMember, SBMemberPositionSlot } from "@/lib/types";
 
@@ -26,7 +30,6 @@ export type PublicSBChartData = {
   committees: Committee[];
 };
 
-const SIGNED_URL_TTL_SECONDS = 3600;
 const CURRENT_TERM = COMMITTEE_YEAR_TERMS[0];
 
 const SB_MEMBER_LOOKUP_SELECT = "id, name, position_slot, position";
@@ -65,10 +68,7 @@ function mapLookupRowToMember(row: SBMemberLookupRow): SBMember {
   };
 }
 
-async function mapRowsWithSignedUrls(
-  supabase: ReturnType<typeof createAdminClient>,
-  rows: SBMemberRow[]
-): Promise<SBMember[]> {
+async function mapRowsWithSignedUrls(rows: SBMemberRow[]): Promise<SBMember[]> {
   const pathsToSign = [
     ...new Set(
       rows
@@ -80,14 +80,13 @@ async function mapRowsWithSignedUrls(
   const signedUrlByPath = new Map<string, string>();
 
   if (pathsToSign.length > 0) {
-    const { data } = await supabase.storage
-      .from(SB_MEMBER_PHOTO_BUCKET)
-      .createSignedUrls(pathsToSign, SIGNED_URL_TTL_SECONDS);
-
-    for (const item of data ?? []) {
-      if (item.path && item.signedUrl) {
-        signedUrlByPath.set(item.path, item.signedUrl);
-      }
+    const { urls } = await createAdminObjectStorage().createSignedUrls({
+      bucket: SB_MEMBER_PHOTO_BUCKET,
+      keys: pathsToSign,
+      expiresInSeconds: SIGNED_URL_TTL_SECONDS,
+    });
+    for (const [path, url] of urls) {
+      signedUrlByPath.set(path, url);
     }
   }
 
@@ -150,7 +149,6 @@ export async function fetchPublicSBChartAction(
     );
 
     const sbMembers = await mapRowsWithSignedUrls(
-      supabase,
       (membersResult.data ?? []) as SBMemberRow[]
     );
 

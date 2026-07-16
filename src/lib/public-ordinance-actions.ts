@@ -4,8 +4,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CATEGORY_SELECT, mapCategoryRowToCategory } from "@/lib/supabase/category-mapper";
 import { toPlaceStorageKey } from "@/lib/supabase/lgu-mapper";
 import {
-  mapOrdinanceRowToDocument,
+  createAdminObjectStorage,
+  resolveSignedUrl,
   ORDINANCE_PDF_BUCKET,
+} from "@/lib/infrastructure/storage";
+import {
+  mapOrdinanceRowToDocument,
   ORDINANCE_SELECT,
   type OrdinanceRow,
 } from "@/lib/supabase/ordinance-mapper";
@@ -14,8 +18,6 @@ import type { Category, LegislativeDocument } from "@/lib/types";
 export type PublicActionResult<T> =
   | { success: true; data: T }
   | { success: false; error: string };
-
-const SIGNED_URL_TTL_SECONDS = 3600;
 
 async function resolveLguId(
   province: string,
@@ -34,13 +36,11 @@ async function resolveLguId(
 }
 
 async function createSignedPdfUrl(storagePath: string): Promise<string> {
-  const supabase = createAdminClient();
-  const { data, error } = await supabase.storage
-    .from(ORDINANCE_PDF_BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
-
-  if (error || !data?.signedUrl) return "";
-  return data.signedUrl;
+  return resolveSignedUrl(
+    createAdminObjectStorage(),
+    ORDINANCE_PDF_BUCKET,
+    storagePath
+  );
 }
 
 export async function fetchPublicOrdinancesAction(

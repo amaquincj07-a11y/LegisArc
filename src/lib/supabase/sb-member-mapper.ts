@@ -17,7 +17,7 @@ export type SBMemberRow = {
   updated_at: string;
 };
 
-export const SB_MEMBER_PHOTO_BUCKET = "sb-member-photos";
+export { SB_MEMBER_PHOTO_BUCKET, buildSBMemberPhotoPath } from "@/lib/infrastructure/storage";
 export const SB_MEMBER_PLACEHOLDER_IMAGE = "/images/sb-member-placeholder.png";
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
@@ -25,14 +25,6 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 export function getPositionLabelForSlot(slot: SBMemberPositionSlot): string {
   const config = SB_MEMBER_POSITION_SLOTS.find((entry) => entry.slot === slot);
   return config?.cardPosition ?? "SB Member";
-}
-
-export function buildSBMemberPhotoPath(
-  lguId: string,
-  memberId: string,
-  extension: string
-): string {
-  return `${lguId}/${memberId}.${extension}`;
 }
 
 export function getImageExtension(file: File): string {

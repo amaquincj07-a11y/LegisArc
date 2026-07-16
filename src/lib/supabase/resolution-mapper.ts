@@ -19,14 +19,10 @@ export type ResolutionRow = {
   updated_at: string;
 };
 
-export const RESOLUTION_PDF_BUCKET = "resolution-pdfs";
-
-export function buildResolutionPdfPath(
-  lguId: string,
-  resolutionId: string
-): string {
-  return `${lguId}/${resolutionId}.pdf`;
-}
+export {
+  RESOLUTION_PDF_BUCKET,
+  buildResolutionPdfPath,
+} from "@/lib/infrastructure/storage";
 
 export function mapResolutionRowToDocument(
   row: ResolutionRow,
